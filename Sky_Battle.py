@@ -10,7 +10,6 @@ WIDTH = 1100  # ゲームウィンドウの幅
 HEIGHT = 650  # ゲームウィンドウの高さ
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-
 def check_bound(obj_rct: pg.Rect) -> tuple[bool, bool]:
     """
     オブジェクトが画面内or画面外を判定し，真理値タプルを返す関数
@@ -36,6 +35,32 @@ def calc_orientation(org: pg.Rect, dst: pg.Rect) -> tuple[float, float]:
     return x_diff/norm, y_diff/norm
 
 
+
+
+class HpGauge:
+    """
+    HPゲージに関するクラス
+    """
+    def __init__(self):
+        self.max_hp = 10  # HPの最大を10に設定
+        self.now_hp = self.max_hp  # 現在のHPを最大のHPに初期化
+        self.empty_color = (128, 128, 128)  # 空のゲージを灰色に設定
+        self.now_color = (0, 255, 0)  # 現在のゲージを緑色に設定
+        self.max_hight = 20  # ゲージの高さを20に設定
+        self.max_width = 200  # ゲージの幅を200に設定
+
+    def decrease(self, damage):  # 被弾でゲージを減らす関数
+        self.now_hp = max(0, self.now_hp - damage)  # 受けたダメージ分、現在のHPを減らす。ただし、0未満にはならない。
+        if self.now_hp <= self.max_hp * 0.2:  # もし現在のHPが最大のHPの20%以下になったら
+            self.now_color = (255, 0, 0)  # 現在のゲージの色を赤色に設定
+        elif self.now_hp <= self.max_hp * 0.4:  # もし現在のHPが最大のHPの40%以下になったら
+            self.now_color = (255, 255, 0)  # 現在のゲージの色を黄色に設定
+        return self.now_hp == 0  # HPが0になったら、負け判定のTrueを返す
+
+    def update(self, screen: pg.Surface):
+        now_width = (self.now_hp / self.max_hp) * self.max_width  # 現在のゲージの幅を、現在のHPに応じて計算
+        pg.draw.rect(screen, self.empty_color, [WIDTH - 220, 20, self.max_width, self.max_hight])  # 空のゲージを描画
+        pg.draw.rect(screen, self.now_color, [WIDTH - 220, 20, now_width, self.max_hight])  # 現在のゲージを描画
 
 
 class Bird(pg.sprite.Sprite):
@@ -241,22 +266,45 @@ class Enemy(pg.sprite.Sprite):
         super().__init__()
         self.image = pg.transform.rotozoom(random.choice(__class__.imgs), 0, 0.8)
         self.rect = self.image.get_rect()
-        self.rect.center = random.randint(0, WIDTH), 0
-        self.vx, self.vy = 0, +6
-        self.bound = random.randint(50, HEIGHT//2)  # 停止位置
+        # 出現位置を画面内に限定
+        self.rect.center = (
+            random.randint(self.rect.width // 2, WIDTH - self.rect.width // 2),
+            random.randint(self.rect.height // 2, HEIGHT // 4),
+        )
+        self.vx, self.vy = random.choice([-3, -2, -1, 1, 2, 3]), +6
+        self.bound = random.randint(50, HEIGHT - 50)  # 停止位置
         self.state = "down"  # 降下状態or停止状態
         self.interval = random.randint(50, 300)  # 爆弾投下インターバル
+        self.max_hp = 10   # 敵のHPの最大を10に設定
+        self.now_hp = self.max_hp  # 敵の現在のHPを最大のHPに初期化
+        self.empty_color = (128, 128, 128)  # 空のゲージを灰色に設定
+        self.now_color = (0, 255, 0)   # 現在のゲージを緑色に設定
+
+    def decrease(self, damage):   # 敵のゲージを減らす関数
+        self.now_hp = max(0, self.now_hp - damage)   # 受けたダメージ分、現在のHPを減らす。ただし、0未満にはならない。
+        if self.now_hp <= self.max_hp * 0.2:  # もし現在のHPが最大のHPの20%以下になったら
+            self.now_color = (255, 0, 0)  # 現在のゲージの色を赤色に設定
+        elif self.now_hp <= self.max_hp * 0.4:  # もし現在のHPが最大のHPの40%以下になったら
+            self.now_color = (255, 255, 0)  # 現在のゲージの色を黄色に設定
+        return self.now_hp == 0  # HPが0になったら、撃破判定のTrueを返す
 
     def update(self):
         """
         敵機を速度ベクトルself.vyに基づき移動（降下）させる
         ランダムに決めた停止位置_boundまで降下したら，_stateを停止状態に変更する
-        引数 screen：画面Surface
         """
-        if self.rect.centery > self.bound:
-            self.vy = 0
-            self.state = "stop"
-        self.rect.move_ip(self.vx, self.vy)
+        if self.state == "down":
+            self.rect.move_ip(self.vx, self.vy)
+            # 画面外にはみ出さないように制御
+            yoko, tate = check_bound(self.rect)
+            if not yoko:
+                self.vx *= -1  # 横方向の移動を反転
+            if self.rect.centery > self.bound:
+                self.vy = 0
+                self.state = "stop"
+        now_width = (self.now_hp / self.max_hp) * self.rect.width  # # 現在のゲージの幅を、現在のHPに応じて計算
+        pg.draw.rect(pg.display.get_surface(), self.empty_color, [self.rect.x, self.rect.y - 10, self.rect.width, 5])  # 空のゲージを描画
+        pg.draw.rect(pg.display.get_surface(), self.now_color, [self.rect.x, self.rect.y - 10, now_width, 5])  # 現在のゲージを描画
 
 
 class Score:
@@ -267,15 +315,38 @@ class Score:
     """
     def __init__(self):
         self.font = pg.font.Font(None, 50)
-        self.color = (0, 0, 255)
+        self.text_color = (125, 125, 125)  # 文字の色
+        self.bg_color = (255, 255, 255)  # 四角形の背景色（白）
         self.value = 0
-        self.image = self.font.render(f"Score: {self.value}", 0, self.color)
+        self.image = self.font.render(f"Score: {self.value}", 0, self.text_color)
         self.rect = self.image.get_rect()
-        self.rect.center = 100, HEIGHT-50
+        self.rect.center = WIDTH // 2, 30  # 表示位置を画面中央（幅）に調整
 
-    def update(self, screen: pg.Surface):
-        self.image = self.font.render(f"Score: {self.value}", 0, self.color)
-        screen.blit(self.image, self.rect)
+    def update(self, screen: pg.Surface, Enemy_num, count_ProSpirit, tmr):
+        """
+        スコアの更新と描画を行うメソッド
+        引数：
+          - screen: 描画対象のSurface
+          - Enemy_num: 敵機の数
+          - count_ProSpirit: 実行までのカウント
+        """
+        # 更新されたスコア文字列を生成
+        text = f"Time:{tmr//60:03} : {self.value:05} pt {Enemy_num}, {count_ProSpirit}"
+        self.image = self.font.render(text, True, self.text_color)
+        self.rect = self.image.get_rect()  # 新しいサイズに合わせてRectを更新
+        self.rect.center = WIDTH // 2, 30  # 表示位置を再設定
+
+        # 四角形の大きさを文字サイズに基づいて設定
+        padding_x = 20  # テキストの周囲の余白
+        padding_y = 10
+        bg_rect = pg.Rect(
+            self.rect.x - padding_x,
+            self.rect.y - padding_y,
+            self.image.get_width() + 2 * padding_x,
+            self.image.get_height() + 2 * padding_y,
+        )
+        pg.draw.rect(screen, self.bg_color, bg_rect, border_radius=15)  # 丸角の四角形を描画 # border_radiusで角を丸くする
+        screen.blit(self.image, self.rect) # 文字を描画
 
 class Gravity(pg.sprite.Sprite):
     """
@@ -290,35 +361,104 @@ class Gravity(pg.sprite.Sprite):
         self.image = pg.Surface((WIDTH, HEIGHT))  # 半透明の黒い矩形
         self.image.set_alpha(200)  # 透明度200の黒色
         self.rect = self.image.get_rect()
-        self.life = life
+        self.rect.center = 100, HEIGHT-50
 
-    def update(self, bombs: pg.sprite.Group, exps: pg.sprite.Group, score: Score):
+    def update(self, screen: pg.Surface, Enemy_num, count_ProSpirit, tmr):
         """
-        発動時間を減らし、範囲内の爆弾を削除
+        スコアの更新と描画を行うメソッド
+        引数：
+          - screen: 描画対象のSurface
+          - Enemy_num: 敵機の数
+          - count_ProSpirit: 実行までのカウント
         """
-        self.life -= 1
-        if self.life <= 0:
-            self.kill()
+        # 更新されたスコア文字列を生成
+        text = f"Time:{tmr//60:03} : {self.value:05} pt {Enemy_num}, {count_ProSpirit}"
+        self.image = self.font.render(text, True, self.text_color)
+        self.rect = self.image.get_rect()  # 新しいサイズに合わせてRectを更新
+        self.rect.center = WIDTH // 2, 30  # 表示位置を再設定
+
+        # 四角形の大きさを文字サイズに基づいて設定
+        padding_x = 20  # テキストの周囲の余白
+        padding_y = 10
+        bg_rect = pg.Rect(
+            self.rect.x - padding_x,
+            self.rect.y - padding_y,
+            self.image.get_width() + 2 * padding_x,
+            self.image.get_height() + 2 * padding_y,
+        )
+        pg.draw.rect(screen, self.bg_color, bg_rect, border_radius=15)  # 丸角の四角形を描画 # border_radiusで角を丸くする
+        screen.blit(self.image, self.rect) # 文字を描画
+
+def stars(screen: pg.Surface, star_count: int = 100):
+    """
+    ランダムに星を描画する
+    引数1 screen：背景を描画するSurface
+    引数2 star_count：星の数（デフォルト100個）
+    """
+    for _ in range(star_count):
+        x = random.randint(0, WIDTH)
+        y = random.randint(0, HEIGHT)
+        size = random.randint(1, 3)  # 星のサイズ（1〜3ピクセル）
+        pg.draw.circle(screen, (255, 255, 255), (x, y), size)
+
+class ProSpirit:
+    """
+
+    """
+    def __init__(self):
+        self.font = pg.font.Font(None, 50)
+        self.color = (0, 0, 255, 120)           # 青色（透過）
+        self.NiceZone = (128, 128, 128, 100)    # 灰色（透過）
+        self.GreatCircle = (255, 255, 0)        # 黄色（枠）
+        self.x = WIDTH//2                       # 位置を真ん中に設定
+        self.y = HEIGHT//2                      # 位置を真ん中に設定
+        self.outRADIUS = 50                     # ドーナツ型の外側の半径
+        self.inRADIUS = 20                      # ドーナツ側の内側の半径
+        self.RADIUS = self.outRADIUS * 2        # 青い円の初期半径を灰色の2倍に設定
+        self.GreatJudge = (self.outRADIUS + self.inRADIUS)//2
+        self.SPEED = 4                          # 小さくなる速さを設定
+        self.decide = None
+
+    def start(self):
+        self.x = random.randint(self.outRADIUS//2 + 10, WIDTH - self.outRADIUS//2 - 10)   # 
+        self.y = random.randint(self.outRADIUS//2 + 10, HEIGHT - self.outRADIUS//2 - 10)  # 
+        self.GreatJudge = random.randint(self.outRADIUS + 5, self.inRADIUS - 5)           # 黄色い円のGreatの基準
+
+    def update(self):
+        while True:
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    pg.quit()
+                    sys.exit()
+                if event.type == pg.KEYDOWN:
+                    if event.key == pg.K_SPACE and not key_pressed:
+                        key_pressed = True
+    def judge(self):
+        if abs(self.RADIUS - self.GreatJudge) <= 2.5:
+            self.decide = "Great"
+        elif self.inRADIUS <= self.RADIUS <= self.outRADIUS:
+            self.decide = "Nice"
         else:
-            # 重力場内の爆弾を削除
-            for bomb in bombs:
-                exps.add(Explosion(bomb, 50))
-                bomb.kill()
-                score.value += 1  # 各爆弾でスコアを増加
+            self.decide = "Miss"
 
 def main():
-    pg.display.set_caption("真！こうかとん無双")
+    pg.display.set_caption("スカイバトル")
     screen = pg.display.set_mode((WIDTH, HEIGHT))
-    bg_img = pg.image.load(f"fig/pg_bg.jpg")
+    bg_img = pg.Surface((WIDTH, HEIGHT))
+    bg_img.fill((0, 0, 0))  # 背景を黒く塗る
+    stars(bg_img, 200)  # 星を200個描画
     score = Score()
-
+    hp_gauge = HpGauge()  # HpGaugeをインスタンス化
+    
     bird = Bird(3, (900, 400))
     bombs = pg.sprite.Group()
     beams = pg.sprite.Group()
     exps = pg.sprite.Group()
     emys = pg.sprite.Group()
-    gravities = pg.sprite.Group()
-
+    Enemy_num = 0 #　敵機の数
+    count_ProSpirit = None # 実行までのカウント
+    Enemy_num = 0 #　敵機の数
+    count_ProSpirit = None # 実行までのカウント
     tmr = 0
     clock = pg.time.Clock()
     while True:
@@ -341,25 +481,36 @@ def main():
                 score.value -= 200  # スコア消費
                 gravities.add(Gravity(400))  # 重力場の生成
         screen.blit(bg_img, [0, 0])
+        
+        if Enemy_num > 6 and count_ProSpirit and tmr%60 == 0:
+            count_ProSpirit -= 1
+        elif Enemy_num > 6 and not count_ProSpirit:
+            count_ProSpirit = random.randint(1, 30)
+        elif Enemy_num <= 6:
+            count_ProSpirit = None
 
-            
-                
-                
+        if Enemy_num > 6 and count_ProSpirit and tmr%60 == 0:
+            count_ProSpirit -= 1
+        elif Enemy_num > 6 and not count_ProSpirit:
+            count_ProSpirit = random.randint(1, 30)
+        elif Enemy_num <= 6:
+            count_ProSpirit = None
 
-
-
-        if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
+        if tmr%60 == 0:  # 200フレームに1回，敵機を出現させる
             emys.add(Enemy())
+            Enemy_num += 1 # 敵機数を増やす
 
         for emy in emys:
-            if emy.state == "stop" and tmr%emy.interval == 0:
+            if emy.state == "stop" and tmr % emy.interval == 0:
                 # 敵機が停止状態に入ったら，intervalに応じて爆弾投下
                 bombs.add(Bomb(emy, bird))
-
-        for emy in pg.sprite.groupcollide(emys, beams, True, True).keys():  # ビームと衝突した敵機リスト
-            exps.add(Explosion(emy, 100))  # 爆発エフェクト
-            score.value += 10  # 10点アップ
-            bird.change_img(6, screen)  # こうかとん喜びエフェクト
+        for emy in pg.sprite.groupcollide(emys, beams, False, True).keys():  # ビームと衝突した敵機リスト
+            if emy.decrease(5):  # ダメージを与え、HPが0の場合
+                emys.remove(emy)  # 敵のリストからemyを削除
+                exps.add(Explosion(emy, 100))  # 爆発エフェクト
+                score.value += 10  # 10点アップ
+                bird.change_img(6, screen)  # こうかとん喜びエフェクト
+                Enemy_num -= 1 # 敵機数を減らす
 
         for bomb in pg.sprite.groupcollide(bombs, beams, True, True).keys():  # ビームと衝突した爆弾リスト
             exps.add(Explosion(bomb, 50))  # 爆発エフェクト
@@ -367,16 +518,15 @@ def main():
 
         for bomb in pg.sprite.spritecollide(bird, bombs, True):  # こうかとんと衝突した爆弾リスト
             if bird.state == "normal":
-                bird.change_img(8, screen)  # こうかとん悲しみエフェクト
-                score.update(screen)
-                pg.display.update()
-                time.sleep(2)
-                return
+                if hp_gauge.decrease(2):  # ダメージを受け、HPが0の場合
+                    hp_gauge.update(screen)  # 負け判定後もゲージを表示
+                    score.update(screen)
+                    pg.display.update()
+                    time.sleep(2)
+                    return
             elif bird.state == "hyper":
                 continue
 
-        gravities.update(bombs, exps, score)
-        gravities.draw(screen)
         bird.update(key_lst, screen)
         beams.update()
         beams.draw(screen)
@@ -386,10 +536,12 @@ def main():
         bombs.draw(screen)
         exps.update()
         exps.draw(screen)
-        score.update(screen)
+        score.update(screen, Enemy_num, count_ProSpirit, tmr)
+        hp_gauge.update(screen)  # 更新されたHPゲージを表示
         pg.display.update()
         tmr += 1
         clock.tick(50)
+
 
 
 if __name__ == "__main__":
