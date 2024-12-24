@@ -107,12 +107,13 @@ class Bomb(pg.sprite.Sprite):
     爆弾に関するクラス
     """
     colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
-
-    def __init__(self, emy: "Enemy", bird: Bird):
+    
+    def __init__(self, emy: "Enemy", bird: Bird, bomb_type=0):
         """
         爆弾円Surfaceを生成する
         引数1 emy：爆弾を投下する敵機
         引数2 bird：攻撃対象のこうかとん
+        引数3 bomb_type：爆弾の種類（0: 打てる, 1: 打てない）
         """
         super().__init__()
         rad = random.randint(10, 50)  # 爆弾円の半径：10以上50以下の乱数
@@ -121,20 +122,24 @@ class Bomb(pg.sprite.Sprite):
         pg.draw.circle(self.image, color, (rad, rad), rad)
         self.image.set_colorkey((0, 0, 0))
         self.rect = self.image.get_rect()
+        
         # 爆弾を投下するemyから見た攻撃対象のbirdの方向を計算
         self.vx, self.vy = calc_orientation(emy.rect, bird.rect)  
         self.rect.centerx = emy.rect.centerx
         self.rect.centery = emy.rect.centery+emy.rect.height//2
         self.speed = 6
+        self.type = bomb_type  # 0: shootable, 1: non-shootable
 
     def update(self):
         """
         爆弾を速度ベクトルself.vx, self.vyに基づき移動させる
-        引数 screen：画面Surface
         """
         self.rect.move_ip(self.speed*self.vx, self.speed*self.vy)
         if check_bound(self.rect) != (True, True):
             self.kill()
+    
+    def bomb_check(self):
+        self.kill()
 
 
 class Beam(pg.sprite.Sprite):
@@ -284,16 +289,21 @@ def main():
         for emy in emys:
             if emy.state == "stop" and tmr%emy.interval == 0:
                 # 敵機が停止状態に入ったら，intervalに応じて爆弾投下
-                bombs.add(Bomb(emy, bird))
+                bomb_type = random.choice([0, 1])
+                bombs.add(Bomb(emy, bird, bomb_type))
 
         for emy in pg.sprite.groupcollide(emys, beams, True, True).keys():  # ビームと衝突した敵機リスト
             exps.add(Explosion(emy, 100))  # 爆発エフェクト
             score.value += 10  # 10点アップ
             bird.change_img(6, screen)  # こうかとん喜びエフェクト
 
-        for bomb in pg.sprite.groupcollide(bombs, beams, True, True).keys():  # ビームと衝突した爆弾リスト
-            exps.add(Explosion(bomb, 50))  # 爆発エフェクト
-            score.value += 1  # 1点アップ
+        for i, bomb in enumerate(pg.sprite.groupcollide(bombs, beams, False, True).keys()):  # ビームと衝突した爆弾リスト
+            if bomb.type == 0:
+                bomb.bomb_check()
+                # for bomb in pg.sprite.groupcollide(bombs, beams, True, True).keys():
+                exps.add(Explosion(bomb, 50))  # 爆発エフェクト
+                score.value += 1
+
 
         for bomb in pg.sprite.spritecollide(bird, bombs, True):  # こうかとんと衝突した爆弾リスト
             bird.change_img(8, screen)  # こうかとん悲しみエフェクト
