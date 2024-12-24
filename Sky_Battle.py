@@ -4,7 +4,7 @@ import random
 import sys
 import time
 import pygame as pg
-
+import pygame
 
 WIDTH = 1100  # ゲームウィンドウの幅
 HEIGHT = 650  # ゲームウィンドウの高さ
@@ -23,7 +23,6 @@ def check_bound(obj_rct: pg.Rect) -> tuple[bool, bool]:
         tate = False
     return yoko, tate
 
-
 def calc_orientation(org: pg.Rect, dst: pg.Rect) -> tuple[float, float]:
     """
     orgから見て，dstがどこにあるかを計算し，方向ベクトルをタプルで返す
@@ -34,6 +33,8 @@ def calc_orientation(org: pg.Rect, dst: pg.Rect) -> tuple[float, float]:
     x_diff, y_diff = dst.centerx-org.centerx, dst.centery-org.centery
     norm = math.sqrt(x_diff**2+y_diff**2)
     return x_diff/norm, y_diff/norm
+
+
 
 
 class HpGauge:
@@ -67,10 +68,10 @@ class Bird(pg.sprite.Sprite):
     ゲームキャラクター（こうかとん）に関するクラス
     """
     delta = {  # 押下キーと移動量の辞書
-        pg.K_UP: (0, -1),
-        pg.K_DOWN: (0, +1),
-        pg.K_LEFT: (-1, 0),
-        pg.K_RIGHT: (+1, 0),
+        pg.K_w: (0, -1),
+        pg.K_s: (0, +1),
+        pg.K_a: (-1, 0),
+        pg.K_d: (+1, 0),
     }
 
     def __init__(self, num: int, xy: tuple[int, int]):
@@ -97,6 +98,9 @@ class Bird(pg.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.center = xy
         self.speed = 10
+        self.state = "normal"
+        self.hyper_life = 10
+        self.move = "neutral"
 
     def change_img(self, num: int, screen: pg.Surface):
         """
@@ -113,19 +117,35 @@ class Bird(pg.sprite.Sprite):
         引数1 key_lst：押下キーの真理値リスト
         引数2 screen：画面Surface
         """
+
+        
         sum_mv = [0, 0]
         for k, mv in __class__.delta.items():
             if key_lst[k]:
+                
                 sum_mv[0] += mv[0]
                 sum_mv[1] += mv[1]
+            
         self.rect.move_ip(self.speed*sum_mv[0], self.speed*sum_mv[1])
         if check_bound(self.rect) != (True, True):
             self.rect.move_ip(-self.speed*sum_mv[0], -self.speed*sum_mv[1])
         if not (sum_mv[0] == 0 and sum_mv[1] == 0):
+            self.move = "move"
             self.dire = tuple(sum_mv)
             self.image = self.imgs[self.dire]
+        else:
+            self.move = "neutral"
+        if self.state == "hyper":
+            self.speed = 20
+            self.hyper_life -= 1
+        if self.hyper_life < 0:
+            self.speed = 10
+            self.state = "normal"
+            self.hyper_life = 10
+        
         screen.blit(self.image, self.rect)
 
+        
 
 class Bomb(pg.sprite.Sprite):
     """
@@ -166,7 +186,7 @@ class Beam(pg.sprite.Sprite):
     """
     ビームに関するクラス
     """
-    def __init__(self, bird: Bird):
+    def __init__(self, bird: Bird, start_pos, target_pos):
         """
         ビーム画像Surfaceを生成する
         引数 bird：ビームを放つこうかとん
@@ -174,22 +194,38 @@ class Beam(pg.sprite.Sprite):
         super().__init__()
         self.vx, self.vy = bird.dire
         angle = math.degrees(math.atan2(-self.vy, self.vx))
-        self.image = pg.transform.rotozoom(pg.image.load(f"fig/beam.png"), angle, 1.0)
-        self.vx = math.cos(math.radians(angle))
-        self.vy = -math.sin(math.radians(angle))
+        self.image = pg.Surface((20, 20))
+        color = (0, 0, 255)  
+        pg.draw.circle(self.image, color, (10, 10), 10)
+        self.image.set_colorkey((0, 0, 0))
         self.rect = self.image.get_rect()
+        self.rect.center = start_pos
+        self.target_pos = target_pos
         self.rect.centery = bird.rect.centery+bird.rect.height*self.vy
         self.rect.centerx = bird.rect.centerx+bird.rect.width*self.vx
         self.speed = 10
+        dx = target_pos[0] - start_pos[0]
+        dy = target_pos[1] - start_pos[1]
+        angle = math.atan2(dy, dx)
+        self.vel_x = math.cos(angle) * self.speed
+        self.vel_y = math.sin(angle) * self.speed
+
+
+    
 
     def update(self):
         """
         ビームを速度ベクトルself.vx, self.vyに基づき移動させる
         引数 screen：画面Surface
         """
-        self.rect.move_ip(self.speed*self.vx, self.speed*self.vy)
+        # 弾を移動
+        self.rect.x += self.vel_x
+        self.rect.y += self.vel_y
         if check_bound(self.rect) != (True, True):
             self.kill()
+    
+
+
 
 
 class Explosion(pg.sprite.Sprite):
@@ -312,6 +348,47 @@ class Score:
         pg.draw.rect(screen, self.bg_color, bg_rect, border_radius=15)  # 丸角の四角形を描画 # border_radiusで角を丸くする
         screen.blit(self.image, self.rect) # 文字を描画
 
+class Gravity(pg.sprite.Sprite):
+    """
+    重力場に関するクラス
+    """
+    def __init__(self, life: int):
+        """
+        重力場を生成する
+        引数 life: 重力場の発動時間
+        """
+        super().__init__()
+        self.image = pg.Surface((WIDTH, HEIGHT))  # 半透明の黒い矩形
+        self.image.set_alpha(200)  # 透明度200の黒色
+        self.rect = self.image.get_rect()
+        self.rect.center = 100, HEIGHT-50
+
+    def update(self, screen: pg.Surface, Enemy_num, count_ProSpirit, tmr):
+        """
+        スコアの更新と描画を行うメソッド
+        引数：
+          - screen: 描画対象のSurface
+          - Enemy_num: 敵機の数
+          - count_ProSpirit: 実行までのカウント
+        """
+        # 更新されたスコア文字列を生成
+        text = f"Time:{tmr//60:03} : {self.value:05} pt {Enemy_num}, {count_ProSpirit}"
+        self.image = self.font.render(text, True, self.text_color)
+        self.rect = self.image.get_rect()  # 新しいサイズに合わせてRectを更新
+        self.rect.center = WIDTH // 2, 30  # 表示位置を再設定
+
+        # 四角形の大きさを文字サイズに基づいて設定
+        padding_x = 20  # テキストの周囲の余白
+        padding_y = 10
+        bg_rect = pg.Rect(
+            self.rect.x - padding_x,
+            self.rect.y - padding_y,
+            self.image.get_width() + 2 * padding_x,
+            self.image.get_height() + 2 * padding_y,
+        )
+        pg.draw.rect(screen, self.bg_color, bg_rect, border_radius=15)  # 丸角の四角形を描画 # border_radiusで角を丸くする
+        screen.blit(self.image, self.rect) # 文字を描画
+
 def stars(screen: pg.Surface, star_count: int = 100):
     """
     ランダムに星を描画する
@@ -372,7 +449,7 @@ def main():
     stars(bg_img, 200)  # 星を200個描画
     score = Score()
     hp_gauge = HpGauge()  # HpGaugeをインスタンス化
-
+    
     bird = Bird(3, (900, 400))
     bombs = pg.sprite.Group()
     beams = pg.sprite.Group()
@@ -390,7 +467,19 @@ def main():
             if event.type == pg.QUIT:
                 return 0
             if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
-                beams.add(Beam(bird))
+                beam_m = Beam(bird, bird.rect.center ,pygame.mouse.get_pos())
+                beams.add(beam_m)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                beam_m = Beam(bird, bird.rect.center ,pygame.mouse.get_pos())
+                beams.add(beam_m)
+            if event.type == pg.KEYDOWN and bird.state != "hyper" and bird.move == "move": 
+                if event.type == pg.KEYDOWN and event.key == pg.K_f :
+                    bird.state = "hyper"
+                    
+            
+            if event.type == pg.KEYDOWN and event.key == pg.K_INSERT and score.value >= 200:  # スコア条件とキー押下条件
+                score.value -= 200  # スコア消費
+                gravities.add(Gravity(400))  # 重力場の生成
         screen.blit(bg_img, [0, 0])
         
         if Enemy_num > 6 and count_ProSpirit and tmr%60 == 0:
@@ -428,14 +517,15 @@ def main():
             score.value += 1  # 1点アップ
 
         for bomb in pg.sprite.spritecollide(bird, bombs, True):  # こうかとんと衝突した爆弾リスト
-            if hp_gauge.decrease(2):  # ダメージを受け、HPが0の場合
-                bird.change_img(8, screen)  # こうかとん悲しみエフェクト
-                hp_gauge.update(screen)  # 負け判定後もゲージを表示
-                score.update(screen)
-                pg.display.update()
-                time.sleep(2)
-                return
-
+            if bird.state == "normal":
+                if hp_gauge.decrease(2):  # ダメージを受け、HPが0の場合
+                    hp_gauge.update(screen)  # 負け判定後もゲージを表示
+                    score.update(screen)
+                    pg.display.update()
+                    time.sleep(2)
+                    return
+            elif bird.state == "hyper":
+                continue
 
         bird.update(key_lst, screen)
         beams.update()
