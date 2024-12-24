@@ -204,9 +204,13 @@ class Enemy(pg.sprite.Sprite):
         super().__init__()
         self.image = pg.transform.rotozoom(random.choice(__class__.imgs), 0, 0.8)
         self.rect = self.image.get_rect()
-        self.rect.center = random.randint(0, WIDTH), 0
-        self.vx, self.vy = 0, +6
-        self.bound = random.randint(50, HEIGHT//2)  # 停止位置
+        # 出現位置を画面内に限定
+        self.rect.center = (
+            random.randint(self.rect.width // 2, WIDTH - self.rect.width // 2),
+            random.randint(self.rect.height // 2, HEIGHT // 4),
+        )
+        self.vx, self.vy = random.choice([-3, -2, -1, 1, 2, 3]), +6
+        self.bound = random.randint(50, HEIGHT - 50)  # 停止位置
         self.state = "down"  # 降下状態or停止状態
         self.interval = random.randint(50, 300)  # 爆弾投下インターバル
 
@@ -214,13 +218,16 @@ class Enemy(pg.sprite.Sprite):
         """
         敵機を速度ベクトルself.vyに基づき移動（降下）させる
         ランダムに決めた停止位置_boundまで降下したら，_stateを停止状態に変更する
-        引数 screen：画面Surface
         """
-        if self.rect.centery > self.bound:
-            self.vy = 0
-            self.state = "stop"
-        self.rect.move_ip(self.vx, self.vy)
-
+        if self.state == "down":
+            self.rect.move_ip(self.vx, self.vy)
+            # 画面外にはみ出さないように制御
+            yoko, tate = check_bound(self.rect)
+            if not yoko:
+                self.vx *= -1  # 横方向の移動を反転
+            if self.rect.centery > self.bound:
+                self.vy = 0
+                self.state = "stop"
 
 class Score:
     """
@@ -230,15 +237,44 @@ class Score:
     """
     def __init__(self):
         self.font = pg.font.Font(None, 50)
-        self.color = (0, 0, 255)
+        self.text_color = (125, 125, 125)  # 文字の色
+        self.bg_color = (255, 255, 255)  # 四角形の背景色（白）
         self.value = 0
-        self.image = self.font.render(f"Score: {self.value}", 0, self.color)
+        self.image = self.font.render(f"Score: {self.value}", 0, self.text_color)
         self.rect = self.image.get_rect()
-        self.rect.center = 100, HEIGHT-50
+        self.rect.center = WIDTH // 2, 30  # 表示位置を画面中央（幅）に調整
 
+<<<<<<< HEAD
     def update(self, screen: pg.Surface, Enemy_num, count_ProSpirit):
         self.image = self.font.render(f"Score: {self.value}, {Enemy_num}, {count_ProSpirit}", 0, self.color)
         screen.blit(self.image, self.rect)
+=======
+    def update(self, screen: pg.Surface, Enemy_num, count_ProSpirit, tmr):
+        """
+        スコアの更新と描画を行うメソッド
+        引数：
+          - screen: 描画対象のSurface
+          - Enemy_num: 敵機の数
+          - count_ProSpirit: 実行までのカウント
+        """
+        # 更新されたスコア文字列を生成
+        text = f"Time:{tmr//60:03} : {self.value:05} pt"#, {Enemy_num}, {count_ProSpirit}"
+        self.image = self.font.render(text, True, self.text_color)
+        self.rect = self.image.get_rect()  # 新しいサイズに合わせてRectを更新
+        self.rect.center = WIDTH // 2, 30  # 表示位置を再設定
+
+        # 四角形の大きさを文字サイズに基づいて設定
+        padding_x = 20  # テキストの周囲の余白
+        padding_y = 10
+        bg_rect = pg.Rect(
+            self.rect.x - padding_x,
+            self.rect.y - padding_y,
+            self.image.get_width() + 2 * padding_x,
+            self.image.get_height() + 2 * padding_y,
+        )
+        pg.draw.rect(screen, self.bg_color, bg_rect, border_radius=15)  # 丸角の四角形を描画 # border_radiusで角を丸くする
+        screen.blit(self.image, self.rect) # 文字を描画
+>>>>>>> C0A23089/表示変更
 
 def stars(screen: pg.Surface, star_count: int = 100):
     """
@@ -286,7 +322,7 @@ class ProSpirit:
             self.decide = "Miss"
 
 def main():
-    pg.display.set_caption("真！こうかとん無双")
+    pg.display.set_caption("スカイバトル")
     screen = pg.display.set_mode((WIDTH, HEIGHT))
     bg_img = pg.Surface((WIDTH, HEIGHT))
     bg_img.fill((0, 0, 0))  # 背景を黒く塗る
@@ -318,7 +354,14 @@ def main():
         elif Enemy_num <= 6:
             count_ProSpirit = None
 
-        if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
+        if Enemy_num > 6 and count_ProSpirit and tmr%60 == 0:
+            count_ProSpirit -= 1
+        elif Enemy_num > 6 and not count_ProSpirit:
+            count_ProSpirit = random.randint(1, 30)
+        elif Enemy_num <= 6:
+            count_ProSpirit = None
+
+        if tmr%60 == 0:  # 200フレームに1回，敵機を出現させる
             emys.add(Enemy())
             Enemy_num += 1 # 敵機数を増やす
 
@@ -353,7 +396,11 @@ def main():
         bombs.draw(screen)
         exps.update()
         exps.draw(screen)
+<<<<<<< HEAD
         score.update(screen, Enemy_num, count_ProSpirit)
+=======
+        score.update(screen, Enemy_num, count_ProSpirit, tmr)
+>>>>>>> C0A23089/表示変更
         pg.display.update()
         tmr += 1
         clock.tick(50)
