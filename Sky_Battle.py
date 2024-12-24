@@ -10,7 +10,6 @@ WIDTH = 1100  # ゲームウィンドウの幅
 HEIGHT = 650  # ゲームウィンドウの高さ
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-
 def check_bound(obj_rct: pg.Rect) -> tuple[bool, bool]:
     """
     オブジェクトが画面内or画面外を判定し，真理値タプルを返す関数
@@ -237,8 +236,8 @@ class Score:
         self.rect = self.image.get_rect()
         self.rect.center = 100, HEIGHT-50
 
-    def update(self, screen: pg.Surface):
-        self.image = self.font.render(f"Score: {self.value}", 0, self.color)
+    def update(self, screen: pg.Surface, Enemy_num, count_ProSpirit):
+        self.image = self.font.render(f"Score: {self.value}, {Enemy_num}, {count_ProSpirit}", 0, self.color)
         screen.blit(self.image, self.rect)
 
 def stars(screen: pg.Surface, star_count: int = 100):
@@ -253,6 +252,39 @@ def stars(screen: pg.Surface, star_count: int = 100):
         size = random.randint(1, 3)  # 星のサイズ（1〜3ピクセル）
         pg.draw.circle(screen, (255, 255, 255), (x, y), size)
 
+class ProSpirit:
+    """
+
+    """
+    def __init__(self):
+        self.font = pg.font.Font(None, 50)
+        self.color = (0, 0, 255, 120)           # 青色（透過）
+        self.NiceZone = (128, 128, 128, 100)    # 灰色（透過）
+        self.GreatCircle = (255, 255, 0)        # 黄色（枠）
+        self.x = WIDTH//2                       # 位置を真ん中に設定
+        self.y = HEIGHT//2                      # 位置を真ん中に設定
+        self.outRADIUS = 50                     # ドーナツ型の外側の半径
+        self.inRADIUS = 20                      # ドーナツ側の内側の半径
+        self.RADIUS = self.outRADIUS * 2        # 青い円の初期半径を灰色の2倍に設定
+        self.GreatJudge = (self.outRADIUS + self.inRADIUS)//2
+        self.SPEED = 4                          # 小さくなる速さを設定
+        self.decide = None
+
+    def start(self):
+        self.x = random.randint(self.outRADIUS//2 + 10, WIDTH - self.outRADIUS//2 - 10)   # 
+        self.y = random.randint(self.outRADIUS//2 + 10, HEIGHT - self.outRADIUS//2 - 10)  # 
+        self.GreatJudge = random.randint(self.outRADIUS + 5, self.inRADIUS - 5)           # 黄色い円のGreatの基準
+
+    def update(self):
+        pass
+    def judge(self):
+        if abs(self.RADIUS - self.GreatJudge) <= 2.5:
+            self.decide = "Great"
+        elif self.inRADIUS <= self.RADIUS <= self.outRADIUS:
+            self.decide = "Nice"
+        else:
+            self.decide = "Miss"
+
 def main():
     pg.display.set_caption("真！こうかとん無双")
     screen = pg.display.set_mode((WIDTH, HEIGHT))
@@ -266,7 +298,8 @@ def main():
     beams = pg.sprite.Group()
     exps = pg.sprite.Group()
     emys = pg.sprite.Group()
-
+    Enemy_num = 0 #　敵機の数
+    count_ProSpirit = None # 実行までのカウント
     tmr = 0
     clock = pg.time.Clock()
     while True:
@@ -277,9 +310,17 @@ def main():
             if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
                 beams.add(Beam(bird))
         screen.blit(bg_img, [0, 0])
+        
+        if Enemy_num > 6 and count_ProSpirit and tmr%60 == 0:
+            count_ProSpirit -= 1
+        elif Enemy_num > 6 and not count_ProSpirit:
+            count_ProSpirit = random.randint(1, 30)
+        elif Enemy_num <= 6:
+            count_ProSpirit = None
 
         if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
             emys.add(Enemy())
+            Enemy_num += 1 # 敵機数を増やす
 
         for emy in emys:
             if emy.state == "stop" and tmr%emy.interval == 0:
@@ -290,6 +331,7 @@ def main():
             exps.add(Explosion(emy, 100))  # 爆発エフェクト
             score.value += 10  # 10点アップ
             bird.change_img(6, screen)  # こうかとん喜びエフェクト
+            Enemy_num -= 1 # 敵機数を減らす
 
         for bomb in pg.sprite.groupcollide(bombs, beams, True, True).keys():  # ビームと衝突した爆弾リスト
             exps.add(Explosion(bomb, 50))  # 爆発エフェクト
@@ -311,7 +353,7 @@ def main():
         bombs.draw(screen)
         exps.update()
         exps.draw(screen)
-        score.update(screen)
+        score.update(screen, Enemy_num, count_ProSpirit)
         pg.display.update()
         tmr += 1
         clock.tick(50)
