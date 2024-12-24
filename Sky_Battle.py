@@ -4,7 +4,7 @@ import random
 import sys
 import time
 import pygame as pg
-
+import pygame
 
 WIDTH = 1100  # ゲームウィンドウの幅
 HEIGHT = 650  # ゲームウィンドウの高さ
@@ -24,7 +24,6 @@ def check_bound(obj_rct: pg.Rect) -> tuple[bool, bool]:
         tate = False
     return yoko, tate
 
-
 def calc_orientation(org: pg.Rect, dst: pg.Rect) -> tuple[float, float]:
     """
     orgから見て，dstがどこにあるかを計算し，方向ベクトルをタプルで返す
@@ -37,15 +36,17 @@ def calc_orientation(org: pg.Rect, dst: pg.Rect) -> tuple[float, float]:
     return x_diff/norm, y_diff/norm
 
 
+
+
 class Bird(pg.sprite.Sprite):
     """
     ゲームキャラクター（こうかとん）に関するクラス
     """
     delta = {  # 押下キーと移動量の辞書
-        pg.K_UP: (0, -1),
-        pg.K_DOWN: (0, +1),
-        pg.K_LEFT: (-1, 0),
-        pg.K_RIGHT: (+1, 0),
+        pg.K_w: (0, -1),
+        pg.K_s: (0, +1),
+        pg.K_a: (-1, 0),
+        pg.K_d: (+1, 0),
     }
 
     def __init__(self, num: int, xy: tuple[int, int]):
@@ -72,6 +73,9 @@ class Bird(pg.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.center = xy
         self.speed = 10
+        self.state = "normal"
+        self.hyper_life = 10
+        self.move = "neutral"
 
     def change_img(self, num: int, screen: pg.Surface):
         """
@@ -88,19 +92,35 @@ class Bird(pg.sprite.Sprite):
         引数1 key_lst：押下キーの真理値リスト
         引数2 screen：画面Surface
         """
+
+        
         sum_mv = [0, 0]
         for k, mv in __class__.delta.items():
             if key_lst[k]:
+                
                 sum_mv[0] += mv[0]
                 sum_mv[1] += mv[1]
+            
         self.rect.move_ip(self.speed*sum_mv[0], self.speed*sum_mv[1])
         if check_bound(self.rect) != (True, True):
             self.rect.move_ip(-self.speed*sum_mv[0], -self.speed*sum_mv[1])
         if not (sum_mv[0] == 0 and sum_mv[1] == 0):
+            self.move = "move"
             self.dire = tuple(sum_mv)
             self.image = self.imgs[self.dire]
+        else:
+            self.move = "neutral"
+        if self.state == "hyper":
+            self.speed = 20
+            self.hyper_life -= 1
+        if self.hyper_life < 0:
+            self.speed = 10
+            self.state = "normal"
+            self.hyper_life = 10
+        
         screen.blit(self.image, self.rect)
 
+        
 
 class Bomb(pg.sprite.Sprite):
     """
@@ -141,7 +161,7 @@ class Beam(pg.sprite.Sprite):
     """
     ビームに関するクラス
     """
-    def __init__(self, bird: Bird):
+    def __init__(self, bird: Bird, start_pos, target_pos):
         """
         ビーム画像Surfaceを生成する
         引数 bird：ビームを放つこうかとん
@@ -150,21 +170,34 @@ class Beam(pg.sprite.Sprite):
         self.vx, self.vy = bird.dire
         angle = math.degrees(math.atan2(-self.vy, self.vx))
         self.image = pg.transform.rotozoom(pg.image.load(f"fig/beam.png"), angle, 1.0)
-        self.vx = math.cos(math.radians(angle))
-        self.vy = -math.sin(math.radians(angle))
         self.rect = self.image.get_rect()
+        self.rect.center = start_pos
+        self.target_pos = target_pos
         self.rect.centery = bird.rect.centery+bird.rect.height*self.vy
         self.rect.centerx = bird.rect.centerx+bird.rect.width*self.vx
         self.speed = 10
+        dx = target_pos[0] - start_pos[0]
+        dy = target_pos[1] - start_pos[1]
+        angle = math.atan2(dy, dx)
+        self.vel_x = math.cos(angle) * self.speed
+        self.vel_y = math.sin(angle) * self.speed
+
+
+    
 
     def update(self):
         """
         ビームを速度ベクトルself.vx, self.vyに基づき移動させる
         引数 screen：画面Surface
         """
-        self.rect.move_ip(self.speed*self.vx, self.speed*self.vy)
+        # 弾を移動
+        self.rect.x += self.vel_x
+        self.rect.y += self.vel_y
         if check_bound(self.rect) != (True, True):
             self.kill()
+    
+
+
 
 
 class Explosion(pg.sprite.Sprite):
@@ -241,24 +274,39 @@ class Score:
         self.image = self.font.render(f"Score: {self.value}", 0, self.color)
         screen.blit(self.image, self.rect)
 
-def stars(screen: pg.Surface, star_count: int = 100):
+class Gravity(pg.sprite.Sprite):
     """
-    ランダムに星を描画する
-    引数1 screen：背景を描画するSurface
-    引数2 star_count：星の数（デフォルト100個）
+    重力場に関するクラス
     """
-    for _ in range(star_count):
-        x = random.randint(0, WIDTH)
-        y = random.randint(0, HEIGHT)
-        size = random.randint(1, 3)  # 星のサイズ（1〜3ピクセル）
-        pg.draw.circle(screen, (255, 255, 255), (x, y), size)
+    def __init__(self, life: int):
+        """
+        重力場を生成する
+        引数 life: 重力場の発動時間
+        """
+        super().__init__()
+        self.image = pg.Surface((WIDTH, HEIGHT))  # 半透明の黒い矩形
+        self.image.set_alpha(200)  # 透明度200の黒色
+        self.rect = self.image.get_rect()
+        self.life = life
+
+    def update(self, bombs: pg.sprite.Group, exps: pg.sprite.Group, score: Score):
+        """
+        発動時間を減らし、範囲内の爆弾を削除
+        """
+        self.life -= 1
+        if self.life <= 0:
+            self.kill()
+        else:
+            # 重力場内の爆弾を削除
+            for bomb in bombs:
+                exps.add(Explosion(bomb, 50))
+                bomb.kill()
+                score.value += 1  # 各爆弾でスコアを増加
 
 def main():
     pg.display.set_caption("真！こうかとん無双")
     screen = pg.display.set_mode((WIDTH, HEIGHT))
-    bg_img = pg.Surface((WIDTH, HEIGHT))
-    bg_img.fill((0, 0, 0))  # 背景を黒く塗る
-    stars(bg_img, 200)  # 星を200個描画
+    bg_img = pg.image.load(f"fig/pg_bg.jpg")
     score = Score()
 
     bird = Bird(3, (900, 400))
@@ -266,6 +314,7 @@ def main():
     beams = pg.sprite.Group()
     exps = pg.sprite.Group()
     emys = pg.sprite.Group()
+    gravities = pg.sprite.Group()
 
     tmr = 0
     clock = pg.time.Clock()
@@ -275,8 +324,26 @@ def main():
             if event.type == pg.QUIT:
                 return 0
             if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
-                beams.add(Beam(bird))
+                beam_m = Beam(bird, bird.rect.center ,pygame.mouse.get_pos())
+                beams.add(beam_m)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                beam_m = Beam(bird, bird.rect.center ,pygame.mouse.get_pos())
+                beams.add(beam_m)
+            if event.type == pg.KEYDOWN and bird.state != "hyper" and bird.move == "move": 
+                if event.type == pg.KEYDOWN and event.key == pg.K_f :
+                    bird.state = "hyper"
+                    
+            
+            if event.type == pg.KEYDOWN and event.key == pg.K_INSERT and score.value >= 200:  # スコア条件とキー押下条件
+                score.value -= 200  # スコア消費
+                gravities.add(Gravity(400))  # 重力場の生成
         screen.blit(bg_img, [0, 0])
+
+            
+                
+                
+
+
 
         if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
             emys.add(Enemy())
@@ -296,12 +363,17 @@ def main():
             score.value += 1  # 1点アップ
 
         for bomb in pg.sprite.spritecollide(bird, bombs, True):  # こうかとんと衝突した爆弾リスト
-            bird.change_img(8, screen)  # こうかとん悲しみエフェクト
-            score.update(screen)
-            pg.display.update()
-            time.sleep(2)
-            return
+            if bird.state == "normal":
+                bird.change_img(8, screen)  # こうかとん悲しみエフェクト
+                score.update(screen)
+                pg.display.update()
+                time.sleep(2)
+                return
+            elif bird.state == "hyper":
+                continue
 
+        gravities.update(bombs, exps, score)
+        gravities.draw(screen)
         bird.update(key_lst, screen)
         beams.update()
         beams.draw(screen)
