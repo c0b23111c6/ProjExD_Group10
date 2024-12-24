@@ -141,7 +141,6 @@ class Bomb(pg.sprite.Sprite):
     def bomb_check(self):
         self.kill()
 
-
 class Beam(pg.sprite.Sprite):
     """
     ビームに関するクラス
@@ -300,7 +299,6 @@ def main():
         for i, bomb in enumerate(pg.sprite.groupcollide(bombs, beams, False, True).keys()):  # ビームと衝突した爆弾リスト
             if bomb.type == 0:
                 bomb.bomb_check()
-                # for bomb in pg.sprite.groupcollide(bombs, beams, True, True).keys():
                 exps.add(Explosion(bomb, 50))  # 爆発エフェクト
                 score.value += 1
 
