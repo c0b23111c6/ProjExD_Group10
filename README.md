@@ -6,7 +6,7 @@
 
 ## ゲームの概要
 * 主人公キャラクター（コウカトン）をWASD操作を用いて敵を倒してポイントをためていくゲーム。
-* 参考URL：[サイトタイトル](https://service.cloud.teu.ac.jp/moodle_epyc/course/view.php?id=18633)
+* 参考URL：[大学Moodle](https://service.cloud.teu.ac.jp/moodle_epyc/course/view.php?id=18633)
 
 ## ゲームの遊び方
 * WASD操作を用いて主人公キャラクター（コウカトン）を敵を倒してポイントをためる。
