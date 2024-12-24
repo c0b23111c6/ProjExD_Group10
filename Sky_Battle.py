@@ -37,6 +37,32 @@ def calc_orientation(org: pg.Rect, dst: pg.Rect) -> tuple[float, float]:
     return x_diff/norm, y_diff/norm
 
 
+class HpGauge:
+    """
+    HPゲージに関するクラス
+    """
+    def __init__(self):
+        self.max_hp = 10  # HPの最大を10に設定
+        self.now_hp = self.max_hp  # 現在のHPを最大のHPに初期化
+        self.empty_color = (128, 128, 128)  # 空のゲージを灰色に設定
+        self.now_color = (0, 255, 0)  # 現在のゲージを緑色に設定
+        self.max_hight = 20  # ゲージの高さを20に設定
+        self.max_width = 200  # ゲージの幅を200に設定
+
+    def decrease(self, damage):  # 被弾でゲージを減らす関数
+        self.now_hp = max(0, self.now_hp - damage)  # 受けたダメージ分、現在のHPを減らす。ただし、0未満にはならない。
+        if self.now_hp <= self.max_hp * 0.2:  # もし現在のHPが最大のHPの20%以下になったら
+            self.now_color = (255, 0, 0)  # 現在のゲージの色を赤色に設定
+        elif self.now_hp <= self.max_hp * 0.4:  # もし現在のHPが最大のHPの40%以下になったら
+            self.now_color = (255, 255, 0)  # 現在のゲージの色を黄色に設定
+        return self.now_hp == 0  # HPが0になったら、負け判定のTrueを返す
+
+    def update(self, screen: pg.Surface):
+        now_width = (self.now_hp / self.max_hp) * self.max_width  # 現在のゲージの幅を、現在のHPに応じて計算
+        pg.draw.rect(screen, self.empty_color, [WIDTH - 220, 20, self.max_width, self.max_hight])  # 空のゲージを描画
+        pg.draw.rect(screen, self.now_color, [WIDTH - 220, 20, now_width, self.max_hight])  # 現在のゲージを描画
+
+
 class Bird(pg.sprite.Sprite):
     """
     ゲームキャラクター（こうかとん）に関するクラス
@@ -210,6 +236,18 @@ class Enemy(pg.sprite.Sprite):
         self.bound = random.randint(50, HEIGHT//2)  # 停止位置
         self.state = "down"  # 降下状態or停止状態
         self.interval = random.randint(50, 300)  # 爆弾投下インターバル
+        self.max_hp = 10  # 敵のHPの最大を10に設定
+        self.now_hp = self.max_hp  # 敵の現在のHPを最大のHPに初期化
+        self.empty_color = (128, 128, 128)  # 空のゲージを灰色に設定
+        self.now_color = (0, 255, 0)  # 現在のゲージを緑色に設定
+
+    def decrease(self, damage):  # 敵のゲージを減らす関数
+        self.now_hp = max(0, self.now_hp - damage)  # 受けたダメージ分、現在のHPを減らす。ただし、0未満にはならない。
+        if self.now_hp <= self.max_hp * 0.2:  # もし現在のHPが最大のHPの20%以下になったら
+            self.now_color = (255, 0, 0)  # 現在のゲージの色を赤色に設定
+        elif self.now_hp <= self.max_hp * 0.4:  # もし現在のHPが最大のHPの40%以下になったら
+            self.now_color = (255, 255, 0)  # 現在のゲージの色を黄色に設定
+        return self.now_hp == 0  # HPが0になったら、撃破判定のTrueを返す
 
     def update(self):
         """
@@ -221,6 +259,9 @@ class Enemy(pg.sprite.Sprite):
             self.vy = 0
             self.state = "stop"
         self.rect.move_ip(self.vx, self.vy)
+        now_width = (self.now_hp / self.max_hp) * self.rect.width  # # 現在のゲージの幅を、現在のHPに応じて計算
+        pg.draw.rect(pg.display.get_surface(), self.empty_color, [self.rect.x, self.rect.y - 10, self.rect.width, 5])  # 空のゲージを描画
+        pg.draw.rect(pg.display.get_surface(), self.now_color, [self.rect.x, self.rect.y - 10, now_width, 5])  # 現在のゲージを描画
 
 
 class Score:
@@ -260,6 +301,7 @@ def main():
     bg_img.fill((0, 0, 0))  # 背景を黒く塗る
     stars(bg_img, 200)  # 星を200個描画
     score = Score()
+    hp_gauge = HpGauge()  # HpGaugeをインスタンス化
 
     bird = Bird(3, (900, 400))
     bombs = pg.sprite.Group()
@@ -278,29 +320,34 @@ def main():
                 beams.add(Beam(bird))
         screen.blit(bg_img, [0, 0])
 
-        if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
+        if tmr % 200 == 0:  # 200フレームに1回，敵機を出現させる
             emys.add(Enemy())
 
         for emy in emys:
-            if emy.state == "stop" and tmr%emy.interval == 0:
+            if emy.state == "stop" and tmr % emy.interval == 0:
                 # 敵機が停止状態に入ったら，intervalに応じて爆弾投下
                 bombs.add(Bomb(emy, bird))
 
-        for emy in pg.sprite.groupcollide(emys, beams, True, True).keys():  # ビームと衝突した敵機リスト
-            exps.add(Explosion(emy, 100))  # 爆発エフェクト
-            score.value += 10  # 10点アップ
-            bird.change_img(6, screen)  # こうかとん喜びエフェクト
+        for emy in pg.sprite.groupcollide(emys, beams, False, True).keys():  # ビームと衝突した敵機リスト
+            if emy.decrease(5):  # ダメージを与え、HPが0の場合
+                emys.remove(emy)  # 敵のリストからemyを削除
+                exps.add(Explosion(emy, 100))  # 爆発エフェクト
+                score.value += 10  # 10点アップ
+                bird.change_img(6, screen)  # こうかとん喜びエフェクト
 
         for bomb in pg.sprite.groupcollide(bombs, beams, True, True).keys():  # ビームと衝突した爆弾リスト
             exps.add(Explosion(bomb, 50))  # 爆発エフェクト
             score.value += 1  # 1点アップ
 
         for bomb in pg.sprite.spritecollide(bird, bombs, True):  # こうかとんと衝突した爆弾リスト
-            bird.change_img(8, screen)  # こうかとん悲しみエフェクト
-            score.update(screen)
-            pg.display.update()
-            time.sleep(2)
-            return
+            if hp_gauge.decrease(2):  # ダメージを受け、HPが0の場合
+                bird.change_img(8, screen)  # こうかとん悲しみエフェクト
+                hp_gauge.update(screen)  # 負け判定後もゲージを表示
+                score.update(screen)
+                pg.display.update()
+                time.sleep(2)
+                return
+
 
         bird.update(key_lst, screen)
         beams.update()
@@ -312,9 +359,11 @@ def main():
         exps.update()
         exps.draw(screen)
         score.update(screen)
+        hp_gauge.update(screen)  # 更新されたHPゲージを表示
         pg.display.update()
         tmr += 1
         clock.tick(50)
+
 
 
 if __name__ == "__main__":
