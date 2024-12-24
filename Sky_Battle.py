@@ -169,7 +169,10 @@ class Beam(pg.sprite.Sprite):
         super().__init__()
         self.vx, self.vy = bird.dire
         angle = math.degrees(math.atan2(-self.vy, self.vx))
-        self.image = pg.transform.rotozoom(pg.image.load(f"fig/beam.png"), angle, 1.0)
+        self.image = pg.Surface((20, 20))
+        color = (0, 0, 255)  
+        pg.draw.circle(self.image, color, (10, 10), 10)
+        self.image.set_colorkey((0, 0, 0))
         self.rect = self.image.get_rect()
         self.rect.center = start_pos
         self.target_pos = target_pos
