@@ -321,7 +321,7 @@ class Score:
         self.font = pg.font.Font(None, 50)
         self.text_color = (125, 125, 125)  # 文字の色
         self.bg_color = (255, 255, 255)  # 四角形の背景色（白）
-        self.value = 0
+        self.value = 714
         self.image = self.font.render(f"Score: {self.value}", 0, self.text_color)
         self.rect = self.image.get_rect()
         self.rect.center = WIDTH // 2, 30  # 表示位置を画面中央（幅）に調整
@@ -335,48 +335,7 @@ class Score:
           - count_ProSpirit: 実行までのカウント
         """
         # 更新されたスコア文字列を生成
-        text = f"Time:{tmr//60:03} : {self.value:05} pt {Enemy_num}, {count_ProSpirit}"
-        self.image = self.font.render(text, True, self.text_color)
-        self.rect = self.image.get_rect()  # 新しいサイズに合わせてRectを更新
-        self.rect.center = WIDTH // 2, 30  # 表示位置を再設定
-
-        # 四角形の大きさを文字サイズに基づいて設定
-        padding_x = 20  # テキストの周囲の余白
-        padding_y = 10
-        bg_rect = pg.Rect(
-            self.rect.x - padding_x,
-            self.rect.y - padding_y,
-            self.image.get_width() + 2 * padding_x,
-            self.image.get_height() + 2 * padding_y,
-        )
-        pg.draw.rect(screen, self.bg_color, bg_rect, border_radius=15)  # 丸角の四角形を描画 # border_radiusで角を丸くする
-        screen.blit(self.image, self.rect) # 文字を描画
-
-class Gravity(pg.sprite.Sprite):
-    """
-    重力場に関するクラス
-    """
-    def __init__(self, life: int):
-        """
-        重力場を生成する
-        引数 life: 重力場の発動時間
-        """
-        super().__init__()
-        self.image = pg.Surface((WIDTH, HEIGHT))  # 半透明の黒い矩形
-        self.image.set_alpha(200)  # 透明度200の黒色
-        self.rect = self.image.get_rect()
-        self.rect.center = 100, HEIGHT-50
-
-    def update(self, screen: pg.Surface, Enemy_num, count_ProSpirit, tmr):
-        """
-        スコアの更新と描画を行うメソッド
-        引数：
-          - screen: 描画対象のSurface
-          - Enemy_num: 敵機の数
-          - count_ProSpirit: 実行までのカウント
-        """
-        # 更新されたスコア文字列を生成
-        text = f"Time:{tmr//60:03} : {self.value:05} pt {Enemy_num}, {count_ProSpirit}"
+        text = f"Time:{tmr//60:03} : {self.value:05} pt"# {Enemy_num}, {count_ProSpirit}"
         self.image = self.font.render(text, True, self.text_color)
         self.rect = self.image.get_rect()  # 新しいサイズに合わせてRectを更新
         self.rect.center = WIDTH // 2, 30  # 表示位置を再設定
@@ -483,16 +442,8 @@ def main():
             
             if event.type == pg.KEYDOWN and event.key == pg.K_INSERT and score.value >= 200:  # スコア条件とキー押下条件
                 score.value -= 200  # スコア消費
-                gravities.add(Gravity(400))  # 重力場の生成
         screen.blit(bg_img, [0, 0])
         
-        if Enemy_num > 6 and count_ProSpirit and tmr%60 == 0:
-            count_ProSpirit -= 1
-        elif Enemy_num > 6 and not count_ProSpirit:
-            count_ProSpirit = random.randint(1, 30)
-        elif Enemy_num <= 6:
-            count_ProSpirit = None
-
         if Enemy_num > 6 and count_ProSpirit and tmr%60 == 0:
             count_ProSpirit -= 1
         elif Enemy_num > 6 and not count_ProSpirit:
@@ -524,16 +475,16 @@ def main():
                 score.value += 1
 
 
-        for bomb in pg.sprite.spritecollide(bird, bombs, True):  # こうかとんと衝突した爆弾リスト
-            if bird.state == "normal":
-                if hp_gauge.decrease(2):  # ダメージを受け、HPが0の場合
-                    hp_gauge.update(screen)  # 負け判定後もゲージを表示
-                    score.update(screen)
-                    pg.display.update()
-                    time.sleep(2)
-                    return
-            elif bird.state == "hyper":
-                continue
+        # for bomb in pg.sprite.spritecollide(bird, bombs, True):  # こうかとんと衝突した爆弾リスト
+        #     if bird.state == "normal":
+        #         if hp_gauge.decrease(2):  # ダメージを受け、HPが0の場合
+        #             hp_gauge.update(screen)  # 負け判定後もゲージを表示
+        #             score.update(screen, Enemy_num, count_ProSpirit, tmr)
+        #             pg.display.update()
+        #             time.sleep(2)
+        #             return
+        #     elif bird.state == "hyper":
+        #         continue
 
         bird.update(key_lst, screen)
         beams.update()
